@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "w_challenge"
+version = "0.1.0"
+description = ""
+authors = ["Omri Refaeli <omrirefaeli1@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+dnspython = "^2.2.1"
+asyncio = "^3.4.3"
+aiosmtplib = "^1.1.6"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
