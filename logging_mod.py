@@ -1,7 +1,7 @@
 import logging
 
 formatting = "%(asctime)s | %(levelname)s | %(message)s"
-logging_level = logging.INFO
+logging_level = logging.DEBUG
 logging.basicConfig(
     handlers=[
         logging.StreamHandler(),  # Print to console

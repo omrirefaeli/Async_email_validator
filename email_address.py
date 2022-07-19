@@ -2,7 +2,7 @@ from typing import Optional
 
 from idna.core import IDNAError, encode
 
-from .exceptions import AddressFormatError
+from exceptions import AddressFormatError
 
 
 class EmailAddress(object):
@@ -19,7 +19,7 @@ class EmailAddress(object):
 
         # Split email address into user and domain part.
         try:
-            self._user, self._domain = self._address.rsplit('@', 1)
+            self._user, self._domain = self._address.rsplit("@", 1)
         except ValueError:
             raise AddressFormatError
 
@@ -28,7 +28,7 @@ class EmailAddress(object):
             self._ace_domain = self._domain
         else:
             try:
-                self._ace_domain = encode(self._domain).decode('ascii')
+                self._ace_domain = encode(self._domain).decode("ascii")
             except IDNAError:
                 raise AddressFormatError
 
@@ -55,13 +55,13 @@ class EmailAddress(object):
         enclosed in brackets, that IP address (without the brackets) is
         returned. Otherwise, `None` is returned.
         """
-        if self._domain.startswith('[') and self._domain.endswith(']'):
+        if self._domain.startswith("[") and self._domain.endswith("]"):
             return self._domain[1:-1]
 
     @property
     def ace(self) -> str:
-        'The ASCII-compatible encoding for the email address.'
-        return '@'.join((self._user, self._ace_domain))
+        "The ASCII-compatible encoding for the email address."
+        return "@".join((self._user, self._ace_domain))
 
     @property
     def ace_domain(self) -> str:

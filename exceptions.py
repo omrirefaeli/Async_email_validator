@@ -1,14 +1,15 @@
 from collections import namedtuple
+from email import message
 from typing import Dict
 
 SMTPMessage = namedtuple(
-    typename='SmtpMessage',
-    field_names=['command', 'code', 'text', 'exceptions'])
+    typename="SmtpMessage", field_names=["command", "code", "text", "exceptions"]
+)
 
 
 class Error(Exception):
-    'Base class for all exceptions of this module.'
-    message = 'Unknown error.'
+    "Base class for all exceptions of this module."
+    message = "Unknown error."
 
     def __str__(self):
         return self.message
@@ -25,16 +26,17 @@ class FromAddressFormatError(ParameterError):
     Raised when the from email address used for the MX check has an
     invalid format.
     """
+
     message = 'Invalid "From:" email address.'
 
 
 class EmailValidationError(Error):
-    'Base class for all exceptions indicating validation failure.'
+    "Base class for all exceptions indicating validation failure."
 
 
 class AddressFormatError(EmailValidationError):
-    'Raised when the email address has an invalid format.'
-    message = 'Invalid email address.'
+    "Raised when the email address has an invalid format."
+    message = "Invalid email address."
 
 
 class DomainBlacklistedError(EmailValidationError):
@@ -42,7 +44,8 @@ class DomainBlacklistedError(EmailValidationError):
     Raised when the domain of the email address is blacklisted on
     https://github.com/disposable-email-domains/disposable-email-domains.
     """
-    message = 'Domain blacklisted.'
+
+    message = "Domain blacklisted."
 
 
 class DNSError(EmailValidationError):
@@ -53,30 +56,31 @@ class DNSError(EmailValidationError):
 
 
 class DomainNotFoundError(DNSError):
-    'Raised when the domain is not found.'
-    message = 'Domain not found.'
+    "Raised when the domain is not found."
+    message = "Domain not found."
 
 
 class NoNameserverError(DNSError):
-    'Raised when the domain does not resolve by nameservers in time.'
-    message = 'No nameserver found for domain.'
+    "Raised when the domain does not resolve by nameservers in time."
+    message = "No nameserver found for domain."
 
 
 class DNSTimeoutError(DNSError):
-    'Raised when the domain lookup times out.'
-    message = 'Domain lookup timed out.'
+    "Raised when the domain lookup times out."
+    message = "Domain lookup timed out."
 
 
 class DNSConfigurationError(DNSError):
     """
     Raised when the DNS entries for this domain are falsely configured.
     """
-    message = 'Misconfigurated DNS entries for domain.'
+
+    message = "Misconfigurated DNS entries for domain."
 
 
 class NoMXError(DNSError):
-    'Raised when the domain has no MX records configured.'
-    message = 'No MX record for domain found.'
+    "Raised when the domain has no MX records configured."
+    message = "No MX record for domain found."
 
 
 class NoValidMXError(DNSError):
@@ -84,7 +88,8 @@ class NoValidMXError(DNSError):
     Raised when the domain has MX records configured, but none of them
     has a valid format.
     """
-    message = 'No valid MX record for domain found.'
+
+    message = "No valid MX record for domain found."
 
 
 class SMTPError(EmailValidationError):
@@ -101,11 +106,13 @@ class SMTPError(EmailValidationError):
         self.error_messages = error_messages
 
     def __str__(self) -> str:
-        return '\n'.join([self.message] + [
-            f'{host}: {message.code} {message.text} '
-            f'(in reply to {message.command!r})'
-            for host, message in self.error_messages.items()
-        ])
+        return "\n".join(
+            [self.message]
+            + [
+                f"{host}: {message.code} {message.text} " f"(in reply to {message.command!r})"
+                for host, message in self.error_messages.items()
+            ]
+        )
 
 
 class AddressNotDeliverableError(SMTPError):
@@ -116,7 +123,8 @@ class AddressNotDeliverableError(SMTPError):
 
     This exception indicates that the email address is clearly invalid.
     """
-    message = 'Email address undeliverable:'
+
+    message = "Email address undeliverable:"
 
 
 class SMTPCommunicationError(SMTPError):
@@ -128,7 +136,22 @@ class SMTPCommunicationError(SMTPError):
     where this program runs or on the MX. A possible reason is that the
     local host ist blacklisted on the MX.
     """
-    message = 'SMTP communication failure:'
+
+    message = "SMTP communication failure:"
+
+
+class SMTPCatchAll(EmailValidationError):
+    """
+    Raised when the SMTP server is accepting all email addresses.
+    This way there is no indication of whether an email exist or not.
+    """
+
+    def __init__(self, domain: str):
+        self.domain = domain
+        self.message = "Catch-All SMTP configured server found."
+
+    def __str__(self) -> str:
+        return "{} Domain is: {}.".format(self.message, self.domain)
 
 
 class SMTPTemporaryError(SMTPError):
@@ -142,13 +165,14 @@ class SMTPTemporaryError(SMTPError):
     cannot be verified, either for reasons of MX configuration (like
     greylisting) or due to temporary server issues on the MX.
     """
-    message = 'Temporary error in email address verification:'
+
+    message = "Temporary error in email address verification:"
 
 
 class TLSNegotiationError(EmailValidationError):
-    'Raised when an error happens during the TLS negotiation.'
-    _str = 'During TLS negotiation, the following exception(s) happened: {exc}'
+    "Raised when an error happens during the TLS negotiation."
+    _str = "During TLS negotiation, the following exception(s) happened: {exc}"
 
     def __str__(self):
-        'Print a readable depiction of what happened.'
-        return self._str.format(exc=', '.join(repr(x) for x in self.args))
+        "Print a readable depiction of what happened."
+        return self._str.format(exc=", ".join(repr(x) for x in self.args))

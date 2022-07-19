@@ -1,11 +1,14 @@
-from logging import getLogger
+import email
+from operator import truediv
+from pyparsing import Opt
+from logging_mod import logging
 from smtplib import SMTP, SMTPNotSupportedError, SMTPResponseException, SMTPServerDisconnected
 from socket import timeout
 from ssl import SSLContext, SSLError
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
-from .email_address import EmailAddress
-from .exceptions import (
+from email_address import EmailAddress
+from exceptions import (
     AddressNotDeliverableError,
     SMTPCommunicationError,
     SMTPMessage,
@@ -13,7 +16,12 @@ from .exceptions import (
     TLSNegotiationError,
 )
 
-LOGGER = getLogger(name=__name__)
+import asyncio
+import trio
+
+from person import Person
+
+logger = logging.getLogger(__name__)
 
 
 class _SMTPChecker(SMTP):
@@ -36,8 +44,10 @@ class _SMTPChecker(SMTP):
         local_hostname: Optional[str],
         timeout: float,
         debug: bool,
-        sender: EmailAddress,
-        recip: EmailAddress,
+        sender: str,
+        recip: List[str],
+        final_results: Set[str],
+        entity: Person,
         skip_tls: bool = False,
         tls_context: Optional[SSLContext] = None,
     ):
@@ -49,12 +59,18 @@ class _SMTPChecker(SMTP):
         super().__init__(local_hostname=local_hostname, timeout=timeout)
         self.set_debuglevel(debuglevel=2 if debug else False)
         self.__sender = sender
-        self.__recip = recip
+        self._recips = recip
+        self._true_results = set()
+        self._final_results = final_results
         self.__temporary_errors = {}
         self.__skip_tls = skip_tls
         self.__tls_context = tls_context
         # Avoid error on close() after unsuccessful connect
         self.sock = None
+        self.entity = entity
+
+        # https://www.greenend.org.uk/rjk/tech/smtpreplies.html#RCPT
+        self.__codes_dict = {"good": [250, 251, 552, 452, 441]}
 
     def putcmd(self, cmd: str, args: str = ""):
         """
@@ -102,38 +118,58 @@ class _SMTPChecker(SMTP):
         except (SSLError, timeout) as exc:
             raise TLSNegotiationError(exc)
 
-    def mail(self, sender: str, options: tuple = ()):
+    def mail(self, sender: str, options: tuple = None):
         """
         Like `smtplib.SMTP.mail`, but raise an appropriate exception on
         negative SMTP server response.
         A code > 400 is an error here.
         """
+        if not options:
+            options = tuple()
         code, message = super().mail(sender=sender, options=options)
+
         if code >= 400:
             raise SMTPResponseException(code=code, msg=message)
         return code, message
 
-    def rcpt(self, recip: str, options: tuple = ()):
+    def _handle_rcpt_codes(self, code: int, msg: str) -> bool:
+        if code in self.__codes_dict["good"]:
+
+            return True
+        # elif code in self.__codes_dict["blocked"]:
+        #     logger.warn("Blocked by mail server")
+        return False
+
+    async def rcpt(self, recip: str, options: tuple = None):
         """
         Like `smtplib.SMTP.rcpt`, but handle negative SMTP server
         responses directly.
         """
+        if not options:
+            options = tuple()
+
         code, message = super().rcpt(recip=recip, options=options)
-        if code >= 500:
-            # Address clearly invalid: issue negative result
-            raise AddressNotDeliverableError(
-                {
-                    self._host: SMTPMessage(
-                        command="RCPT TO",
-                        code=code,
-                        text=message.decode(errors="ignore"),
-                        exceptions=(),
-                    )
-                }
-            )
-        elif code >= 400:
-            raise SMTPResponseException(code=code, msg=message)
-        return code, message
+        if self._handle_rcpt_codes(code, message):
+            logger.debug(f"Found new email~ {recip}.")
+            self._true_results.add(recip)
+
+        # if code >= 500:
+        #     # Address clearly invalid: issue negative result
+        #     raise AddressNotDeliverableError(
+        #         {
+        #             self._host: SMTPMessage(
+        #                 command="RCPT TO",
+        #                 code=code,
+        #                 text=message.decode(errors="ignore"),
+        #                 exceptions=(),
+        #             )
+        #         }
+        #     )
+        # elif code >= 400:
+        #     raise SMTPResponseException(code=code, msg=message)
+
+        # return code, message
+        # self._true_results.append([code, message])
 
     def quit(self):
         """
@@ -164,7 +200,7 @@ class _SMTPChecker(SMTP):
             self.__temporary_errors[self._host] = smtp_message
         return False
 
-    def _check_one(self, host: str) -> bool:
+    async def _check_one(self, host: str) -> bool:
         """
         Run the check for one SMTP server.
 
@@ -175,13 +211,42 @@ class _SMTPChecker(SMTP):
 
         Raise `AddressNotDeliverableError`. on negative result.
         """
+
         try:
             self.connect(host=host)
             if not self.__skip_tls:
                 self.starttls(context=self.__tls_context)
             self.ehlo_or_helo_if_needed()
-            self.mail(sender=self.__sender.ace)
-            code, _ = self.rcpt(recip=self.__recip.ace)
+            self.mail(sender=self.__sender)
+
+            # Start async and advance only when all subtasks are done
+            async with trio.open_nursery() as nursery:
+                for vari in self._recips:
+                    try:
+                        nursery.start_soon(self.rcpt, vari)
+                    except SMTPServerDisconnected:
+                        logger.warn(f"Server got disconnected while trying variation - {vari}")
+
+            # TODO: deal with over 15
+
+            # Hard copy of the true set
+            temp_true_set = self._true_results.copy()
+
+            # Checking for email duplicates with trailing numbers
+            async with trio.open_nursery() as nursery:
+                for true_var in temp_true_set:
+                    for i in range(1, 3):
+                        email_split = true_var.split("@")
+                        email_split[0] = email_split[0] + str(i)
+                        if len(email_split) != 2:
+                            logger.error(
+                                f"Error parsing email {true_var} - enriched email with trailing nums"
+                            )
+                        nursery.start_soon(self.rcpt, "@".join(email_split))
+
+            if self._true_results:
+                self._final_results.update(self._true_results)
+
         except SMTPServerDisconnected as exc:
             self.__temporary_errors[self._host] = SMTPMessage(
                 command=self.__command, code=451, text=str(exc), exceptions=(exc,)
@@ -196,29 +261,35 @@ class _SMTPChecker(SMTP):
             return False
         finally:
             self.quit()
-        return code < 400
+        if self._true_results:
+            return True
+        return False
 
-    def check(self, hosts: List[str]) -> bool:
+    async def check(self, hosts: List[str]) -> bool:
         """
         Run the check for all given SMTP servers. On positive result,
         return `True`, else raise exceptions described in `smtp_check`.
         """
         for host in hosts:
-            LOGGER.debug(msg=f"Trying {host} ...")
-            if self._check_one(host=host):
-                return True
+            logger.debug(msg=f"Entity - {self.entity}; Trying {host} ...")
+
+            # If a result was found, then no need to check other servers
+            if await self._check_one(host=host):
+                return self._true_results
         # Raise exception for collected temporary errors
         if self.__temporary_errors:
             raise SMTPTemporaryError(error_messages=self.__temporary_errors)
-        return False
+        return []
 
 
-def smtp_check(
-    email_address: EmailAddress,
+async def smtp_check(
+    email_addresses: List[str],
     mx_records: List[str],
+    from_address: str,
+    final_results: Set[str],
+    entity: Person,
     timeout: float = 10,
     helo_host: Optional[str] = None,
-    from_address: Optional[EmailAddress] = None,
     skip_tls: bool = False,
     tls_context: Optional[SSLContext] = None,
     debug: bool = False,
@@ -244,9 +315,11 @@ def smtp_check(
         local_hostname=helo_host,
         timeout=timeout,
         debug=debug,
-        sender=from_address or email_address,
-        recip=email_address,
+        sender=from_address,
+        recip=email_addresses,
+        final_results=final_results,
         skip_tls=skip_tls,
         tls_context=tls_context,
+        entity=entity,
     )
-    return smtp_checker.check(hosts=mx_records)
+    return await smtp_checker.check(hosts=mx_records)
