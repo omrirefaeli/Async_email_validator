@@ -1,22 +1,16 @@
-import email
-from operator import truediv
-from pyparsing import Opt
 from logging_mod import logging
 from smtplib import SMTP, SMTPNotSupportedError, SMTPResponseException, SMTPServerDisconnected
 from socket import timeout
 from ssl import SSLContext, SSLError
 from typing import List, Optional, Tuple, Set
 
-from email_address import EmailAddress
 from exceptions import (
-    AddressNotDeliverableError,
     SMTPCommunicationError,
     SMTPMessage,
     SMTPTemporaryError,
     TLSNegotiationError,
 )
 
-import asyncio
 import trio
 
 from person import Person
@@ -133,11 +127,13 @@ class _SMTPChecker(SMTP):
         return code, message
 
     def _handle_rcpt_codes(self, code: int, msg: str) -> bool:
+        """
+        Helper func to handle RCPT response codes.
+        Returns True if email address is deilverable
+        """
+        # Parameter msg for future use
         if code in self.__codes_dict["good"]:
-
             return True
-        # elif code in self.__codes_dict["blocked"]:
-        #     logger.warn("Blocked by mail server")
         return False
 
     async def rcpt(self, recip: str, options: tuple = None):
@@ -152,24 +148,6 @@ class _SMTPChecker(SMTP):
         if self._handle_rcpt_codes(code, message):
             logger.debug(f"Found new email~ {recip}.")
             self._true_results.add(recip)
-
-        # if code >= 500:
-        #     # Address clearly invalid: issue negative result
-        #     raise AddressNotDeliverableError(
-        #         {
-        #             self._host: SMTPMessage(
-        #                 command="RCPT TO",
-        #                 code=code,
-        #                 text=message.decode(errors="ignore"),
-        #                 exceptions=(),
-        #             )
-        #         }
-        #     )
-        # elif code >= 400:
-        #     raise SMTPResponseException(code=code, msg=message)
-
-        # return code, message
-        # self._true_results.append([code, message])
 
     def quit(self):
         """
@@ -227,8 +205,6 @@ class _SMTPChecker(SMTP):
                     except SMTPServerDisconnected:
                         logger.warn(f"Server got disconnected while trying variation - {vari}")
 
-            # TODO: deal with over 15
-
             # Hard copy of the true set
             temp_true_set = self._true_results.copy()
 
@@ -244,6 +220,7 @@ class _SMTPChecker(SMTP):
                             )
                         nursery.start_soon(self.rcpt, "@".join(email_split))
 
+            # Update final set with the results
             if self._true_results:
                 self._final_results.update(self._true_results)
 

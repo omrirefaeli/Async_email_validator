@@ -80,7 +80,10 @@ class DNSConfigurationError(DNSError):
 
 class NoMXError(DNSError):
     "Raised when the domain has no MX records configured."
-    message = "No MX record for domain found."
+
+    def __init__(self, domain: str):
+        self.domain = domain
+        self.message = f"Domain {domain} doesn't have valid MX records"
 
 
 class NoValidMXError(DNSError):
@@ -89,7 +92,9 @@ class NoValidMXError(DNSError):
     has a valid format.
     """
 
-    message = "No valid MX record for domain found."
+    def __init__(self, domain: str):
+        self.domain = domain
+        self.message = f"Domain {domain} doesn't have valid MX records"
 
 
 class SMTPError(EmailValidationError):

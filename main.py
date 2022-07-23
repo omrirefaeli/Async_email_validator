@@ -7,7 +7,7 @@ from dns import resolver
 import trio
 from functools import partial
 
-from exceptions import SMTPCatchAll
+from exceptions import NoMXError, SMTPCatchAll, NoValidMXError
 
 # Local imports
 from logging_mod import logging
@@ -26,8 +26,6 @@ shlomo = "omrirefaeli@gmail.com"
 
 logger = logging.getLogger(__name__)
 
-# TODO: validate arguments
-
 
 async def main():
 
@@ -35,8 +33,7 @@ async def main():
     mx_records = query_mx(DOMAIN_STR)
     if not mx_records:
         logger.error(f"Domain {DOMAIN_STR} doesn't have valid MX records")
-        # TODO: add error
-        raise Exception(f"Domain {DOMAIN_STR} doesn't have valid MX records")
+        raise NoMXError(DOMAIN_STR)
 
     mx_records_resolved = []
     for rec in mx_records:
@@ -50,21 +47,7 @@ async def main():
         logger.error(
             f"Domain {DOMAIN_STR} doesn't have a respective valid A record to the MX records"
         )
-        # TODO: add error
-        raise Exception(
-            f"Domain {DOMAIN_STR} doesn't have a respective valid A record to the MX records"
-        )
-
-    # to_addresses = [shlomo, shlomo]
-    # mock_email = MOCK_MAIL
-    # print(
-    #     await smtp_check(
-    #         email_address=to_addresses,
-    #         mx_records=mx_records_resolved,
-    #         timeout=SMTP_TIMEOUT,
-    #         from_address=mock_email,
-    #     )
-    # )
+        raise NoValidMXError(DOMAIN_STR)
 
     # Check if CHECK ALL is configured on the SMTP server
     rand_email = random_email(DOMAIN_STR)
@@ -135,6 +118,7 @@ def query_mx(domain: str) -> List[str]:
         )
         return mail_exchangers
     except (resolver.NoAnswer, resolver.NXDOMAIN, resolver.NoNameservers):
+        logger.error(f"Error during querying DNS type MX {domain}")
         return None
 
 
@@ -150,9 +134,8 @@ def query_A(domain: str) -> List[str]:
             final_IPs_list.add(res.to_text())
         return list(final_IPs_list)
 
-    # TODO: add exceptions
-    except Exception as e:
-        logger.error(f"Error during querying DNS type A {e}")
+    except (resolver.NoAnswer, resolver.NXDOMAIN, resolver.NoNameservers):
+        logger.error(f"Error during querying DNS type A {domain}")
         return None
 
 
@@ -161,7 +144,7 @@ def random_email(domain: str) -> str:
     This method generates a random email by using the os.urandom
     for the domain provided in the parameter.
     """
-    return f"{binascii.hexlify(os.urandom(40)).decode()}@{domain}"
+    return f"{binascii.hexlify(os.urandom(30)).decode()}@{domain}"
 
 
 if __name__ == "__main__":
