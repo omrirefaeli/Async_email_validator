@@ -1,18 +1,20 @@
-from logging_mod import logging
+# External imports
 from smtplib import SMTP, SMTPNotSupportedError, SMTPResponseException, SMTPServerDisconnected
 from socket import timeout
 from ssl import SSLContext, SSLError
 from typing import List, Optional, Tuple, Set
+import socks
+import trio
 
+# Local imports
+from logging_mod import logging
 from exceptions import (
     SMTPCommunicationError,
     SMTPMessage,
     SMTPTemporaryError,
     TLSNegotiationError,
+    UnknownProxyError,
 )
-
-import trio
-
 from person import Person
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,13 @@ class _SMTPChecker(SMTP):
         entity: Person,
         skip_tls: bool = False,
         tls_context: Optional[SSLContext] = None,
+        proxy_type=None,
+        proxy_addr=None,
+        proxy_port=None,
+        proxy_rdns=True,
+        proxy_username=None,
+        proxy_password=None,
+        socket_options=None,
     ):
         """
         Initialize the object with all the parameters which remain
@@ -63,8 +72,49 @@ class _SMTPChecker(SMTP):
         self.sock = None
         self.entity = entity
 
+        # Proxy defs
+        self.proxy_type = proxy_type
+        self.proxy_addr = proxy_addr
+        self.proxy_port = proxy_port
+        self.proxy_rdns = proxy_rdns
+        self.proxy_username = proxy_username
+        self.proxy_password = proxy_password
+        self.socket_options = socket_options
+
+        proxy = {
+            "socks4": socks.SOCKS4,
+            "socks5": socks.SOCKS5,
+        }
+
+        if proxy_type:
+            try:
+                self.proxy_type = proxy[proxy_type.lower()]
+            except KeyError:
+                raise UnknownProxyError(proxy_type)
+        else:
+            self.proxy_type = None
+
+        if self.proxy_type:
+            self._get_socket = self.socks_get_socket
+
         # https://www.greenend.org.uk/rjk/tech/smtpreplies.html#RCPT
         self.__codes_dict = {"good": [250, 251, 552, 452, 441]}
+
+    def socks_get_socket(self, host, port, timeout):
+        if self.debuglevel > 0:
+            logger.debug(f"Socks SMTP connect: to {host}:{port}")
+        return socks.create_connection(
+            (host, port),
+            timeout=timeout,
+            source_address=None,
+            proxy_type=self.proxy_type,
+            proxy_addr=self.proxy_addr,
+            proxy_port=self.proxy_port,
+            proxy_rdns=self.proxy_rdns,
+            proxy_username=self.proxy_username,
+            proxy_password=self.proxy_password,
+            socket_options=self.socket_options,
+        )
 
     def putcmd(self, cmd: str, args: str = ""):
         """
@@ -267,9 +317,16 @@ async def smtp_check(
     entity: Person,
     timeout: float = 10,
     helo_host: Optional[str] = None,
-    skip_tls: bool = False,
+    skip_tls: bool = True,
     tls_context: Optional[SSLContext] = None,
     debug: bool = False,
+    proxy_type=None,
+    proxy_addr=None,
+    proxy_port=None,
+    proxy_rdns=True,
+    proxy_username=None,
+    proxy_password=None,
+    socket_options=None,
 ) -> bool:
     """
     Returns `True` as soon as the any of the given server accepts the
@@ -298,5 +355,12 @@ async def smtp_check(
         skip_tls=skip_tls,
         tls_context=tls_context,
         entity=entity,
+        proxy_type=proxy_type,
+        proxy_addr=proxy_addr,
+        proxy_port=proxy_port,
+        proxy_username=proxy_username,
+        proxy_password=proxy_password,
+        proxy_rdns=proxy_rdns,
+        socket_options=socket_options,
     )
     return await smtp_checker.check(hosts=mx_records)

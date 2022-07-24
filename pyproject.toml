@@ -11,6 +11,7 @@ asyncio = "^3.4.3"
 aiosmtplib = "^1.1.6"
 aiosmtpd = "^1.4.2"
 trio = "^0.21.0"
+PySocks = "^1.7.1"
 
 [tool.poetry.dev-dependencies]
 

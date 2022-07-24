@@ -1,5 +1,4 @@
 from collections import namedtuple
-from email import message
 from typing import Dict
 
 SMTPMessage = namedtuple(
@@ -34,48 +33,11 @@ class EmailValidationError(Error):
     "Base class for all exceptions indicating validation failure."
 
 
-class AddressFormatError(EmailValidationError):
-    "Raised when the email address has an invalid format."
-    message = "Invalid email address."
-
-
-class DomainBlacklistedError(EmailValidationError):
-    """
-    Raised when the domain of the email address is blacklisted on
-    https://github.com/disposable-email-domains/disposable-email-domains.
-    """
-
-    message = "Domain blacklisted."
-
-
 class DNSError(EmailValidationError):
     """
     Base class of all exceptions that indicate failure to determine a
     valid MX for the domain of email address.
     """
-
-
-class DomainNotFoundError(DNSError):
-    "Raised when the domain is not found."
-    message = "Domain not found."
-
-
-class NoNameserverError(DNSError):
-    "Raised when the domain does not resolve by nameservers in time."
-    message = "No nameserver found for domain."
-
-
-class DNSTimeoutError(DNSError):
-    "Raised when the domain lookup times out."
-    message = "Domain lookup timed out."
-
-
-class DNSConfigurationError(DNSError):
-    """
-    Raised when the DNS entries for this domain are falsely configured.
-    """
-
-    message = "Misconfigurated DNS entries for domain."
 
 
 class NoMXError(DNSError):
@@ -181,3 +143,12 @@ class TLSNegotiationError(EmailValidationError):
     def __str__(self):
         "Print a readable depiction of what happened."
         return self._str.format(exc=", ".join(repr(x) for x in self.args))
+
+
+class UnknownProxyError(ParameterError):
+    """
+    Raised when the proxy type is an unknown one, or not compatible one
+    """
+
+    def __init__(self, proxy_type):
+        self.message = f"The proxy type {proxy_type} is not known\n Try one of 'socks4', 'socks5'"
