@@ -1,6 +1,6 @@
 # W_challenge
 
-I wrote this project as part of an interview's home task. This is an asyncronous email addresses validator that checks existence of mass possible email addresses in a provided domain name.
+I wrote this project as part of an interview's home task, so it's not completely finessed. This is an asyncronous email addresses validator that checks existence of mass possible email addresses in a provided domain name.
 The email addresses are generated according to several common patterns respectively for entities read in an input file with "first,last" names (as of now).
 
 To avoid being blocked from the queried servers, a proxy option is available (socks4/socks5).
