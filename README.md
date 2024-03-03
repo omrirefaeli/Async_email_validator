@@ -1,4 +1,4 @@
-# W_challenge
+# Async_email_validator
 
 I wrote this project as part of an interview's home task, so it's not completely finessed. This is an asyncronous email addresses validator that checks existence of mass possible email addresses in a provided domain name.
 The email addresses are generated according to several common patterns respectively for entities read in an input file with "first,last" names (as of now).
